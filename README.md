@@ -43,9 +43,13 @@ agent.add_example(example)
 agent.run("Do something cool")
 ```
 
-## Memory (LTM)
+## Memory (LTM & STM)
 
-Kiori provides a `MilvusLTM` class for long-term memory using Milvus Lite.
+Kiori provides memory modules for both Long-Term Memory (LTM) and Short-Term Memory (STM).
+
+### Long-Term Memory (MilvusLTM)
+
+Kiori provides a `MilvusLTM` class using Milvus Lite.
 
 ```python
 from kiori.memory import MilvusLTM
@@ -64,7 +68,31 @@ ltm.add_examples([example])
 
 # Search memory
 results = ltm.search("Do something cool", top_k=1)
-print(results)
+```
+
+### Short-Term Memory (ReplayBuffer)
+
+`ReplayBuffer` stores examples from the immediate previous conversation turn.
+
+```python
+from kiori.memory import ReplayBuffer
+
+replay_buffer = ReplayBuffer()
+replay_buffer.update_buffer([example])
+```
+
+### Context Integration
+
+`KioriAgent` automatically merges contexts from both memory sources.
+
+```python
+from kiori.agent import KioriAgent
+
+agent = KioriAgent(ltm=ltm, replay_buffer=replay_buffer)
+
+# Automatically searches LTM and samples STM to generate context examples
+ctx = agent.get_context_examples("User's new prompt")
+print(ctx)
 ```
 
 ## Philosophy

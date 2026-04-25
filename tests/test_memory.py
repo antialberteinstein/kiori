@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 import numpy as np
 from kiori.models import ActionExample
-from kiori.memory import MilvusLTM
+from kiori.memory import MilvusLTM, ReplayBuffer
 
 
 @patch('kiori.memory.SentenceTransformer')
@@ -74,3 +74,24 @@ def test_milvus_search(mock_milvus: MagicMock, mock_st: MagicMock) -> None:
     assert results[0][1] == 0.8
     assert results[0][0].user_prompt == "hello"
     assert results[0][0].expected_action_text == "greet()"
+
+
+def test_replay_buffer() -> None:
+    rb = ReplayBuffer()
+    assert len(rb.buffer) == 0
+
+    ex1 = ActionExample("p1", "a1")
+    ex2 = ActionExample("p2", "a2")
+    ex3 = ActionExample("p3", "a3")
+
+    rb.update_buffer([ex1, ex2, ex3])
+    assert len(rb.buffer) == 3
+
+    # Sample more than exists
+    sampled = rb.sample_buffer(5)
+    assert len(sampled) == 3
+
+    # Sample less
+    sampled2 = rb.sample_buffer(2)
+    assert len(sampled2) == 2
+    assert sampled2[0] in [ex1, ex2, ex3]

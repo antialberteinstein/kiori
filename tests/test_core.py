@@ -1,6 +1,8 @@
 from typing import Any
+from unittest.mock import MagicMock
 from kiori.agent import KioriAgent
 from kiori.models import Action, ActionExample
+from kiori.memory import ReplayBuffer
 
 
 def dummy_func() -> str:
@@ -40,4 +42,30 @@ def test_run(capsys: Any) -> None:
     agent = KioriAgent()
     agent.run("Hello world")
     captured = capsys.readouterr()
-    assert "Prompt received: Hello world\n" == captured.out
+    assert "Prompt received: Hello world\n" in captured.out
+    assert "Context examples count: 0\n" in captured.out
+
+
+def test_get_context_examples() -> None:
+    # Setup mocks
+    mock_ltm = MagicMock()
+    ex_ltm = ActionExample("ltm_prompt", "ltm_action()")
+    mock_ltm.search.return_value = [(ex_ltm, 0.9)]
+    mock_ltm.scale_examples.return_value = [ex_ltm, ex_ltm]
+
+    replay_buffer = ReplayBuffer()
+    ex_replay = ActionExample("replay_prompt", "replay_action()")
+    replay_buffer.update_buffer([ex_replay, ex_replay])
+
+    agent = KioriAgent(ltm=mock_ltm, replay_buffer=replay_buffer)
+
+    merged = agent.get_context_examples(
+        "test prompt", threshold=0.5, max_copies=3, sample_n=1
+    )
+
+    assert len(merged) == 3
+    assert merged.count(ex_ltm) == 2
+    assert merged.count(ex_replay) == 1
+
+    # Check mock called with right query
+    mock_ltm.search.assert_called_once_with("test prompt", top_k=5)

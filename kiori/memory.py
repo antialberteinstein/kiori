@@ -1,3 +1,4 @@
+import random
 from typing import List, Tuple
 from pymilvus import MilvusClient
 from sentence_transformers import SentenceTransformer
@@ -82,3 +83,16 @@ class MilvusLTM:
                 copies = max(1, int(ratio * max_copies))
                 scaled_examples.extend([ex] * copies)
         return scaled_examples
+
+
+class ReplayBuffer:
+    def __init__(self) -> None:
+        self.buffer: List[ActionExample] = []
+
+    def update_buffer(self, new_examples: List[ActionExample]) -> None:
+        self.buffer = list(new_examples)
+
+    def sample_buffer(self, n: int) -> List[ActionExample]:
+        if n >= len(self.buffer):
+            return list(self.buffer)
+        return random.sample(self.buffer, n)
