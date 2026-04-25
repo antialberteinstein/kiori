@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kiori"
+version = "0.1.0"
+description = "A minimalist library with as few dependencies as possible."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Author Name", email = "author@example.com"}
+]
+requires-python = ">=3.8"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "flake8",
+    "build",
+    "twine"
+]
+
+[tool.setuptools.packages.find]
+include = ["kiori*"]
