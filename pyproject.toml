@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kiori"
-version = "0.1.0"
+version = "0.2.0"
 description = "A minimalist library with as few dependencies as possible."
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Author Name", email = "author@example.com"}
+    {name = "Fujiwara Kyokugen", email = "antialberteinstein@gmail.com"}
 ]
 requires-python = ">=3.8"
 dependencies = []
@@ -25,6 +25,10 @@ dev = [
     "flake8",
     "build",
     "twine"
+]
+memory = [
+    "pymilvus",
+    "sentence-transformers"
 ]
 
 [tool.setuptools.packages.find]
