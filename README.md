@@ -4,20 +4,19 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/kiori.svg)](https://pypi.org/project/kiori/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Kiori** is a minimalist, highly extensible Python framework for building LLM-based agents. True to its philosophy, it eschews bloated dependencies in favor of a clean, composable architecture. 
+**Kiori** is a minimalist, highly extensible Python framework for building SLM/LLM-based agents. True to its philosophy, it eschews bloated dependencies in favor of a clean, composable architecture. 
 
-Kiori introduces advanced contextual memory and execution capabilities directly to your LLM pipelines, featuring a **Weighted Pattern Matcher**, **Markov Chain Routing**, and a **Replay Buffer** for robust multi-turn conversations.
+In version 1.1.0, Kiori embraces the inherent reasoning power of modern Small Language Models (SLMs) and LLMs by relying entirely on **Long-Term Memory (LTM)** via Cosine Similarity and **Short-Term Memory (STM)** via a Replay Buffer. This dynamic memory injection provides agents with robust contextual awareness without artificial routing constraints.
 
 ---
 
 ## Architecture Overview
 
-Kiori's strength lies in how it seamlessly merges different context paradigms before sending prompts to an LLM:
+Kiori seamlessly merges different memory paradigms before sending prompts to your model:
 
-1. **Long-Term Memory (LTM) & Weighted Pattern Matcher**: Powered by Milvus Lite, the LTM stores past interactions and few-shot examples as vector embeddings. When a new prompt arrives, Kiori performs semantic search (Cosine Similarity). High-confidence matches are dynamically duplicated (scaled) to heavily influence the LLM's behavior via the Weighted Pattern Matcher mechanism.
-2. **Short-Term Memory (Replay Buffer)**: Retains the immediate preceding turns of a conversation, ensuring the LLM is acutely aware of recent context.
-3. **Markov Chain Router**: Resolves ambiguity by applying a predefined transition matrix $P(Action\_B | Action\_A)$. The semantic score from the LTM is combined with the Markov probability to calculate a final score: `Score = alpha * cosine_score + beta * P(B|A)`. This ensures logical flow between actions even if user input is vague.
-4. **Execution Pipeline**: Automatically parses the LLM's string output, extracts action signatures and arguments, and executes the mapped Python code.
+1. **Long-Term Memory (LTM) & Weighted Pattern Matcher**: Powered by Milvus Lite, the LTM stores past interactions and few-shot examples as vector embeddings. When a new prompt arrives, Kiori performs semantic search (Cosine Similarity). High-confidence matches are dynamically duplicated (scaled) to heavily influence the model's behavior via the Weighted Pattern Matcher mechanism.
+2. **Short-Term Memory (Replay Buffer)**: Retains the immediate preceding turns of a conversation, ensuring the model is acutely aware of recent context and can reason about the ongoing dialogue state natively.
+3. **Execution Pipeline**: Automatically parses the model's string output, extracts action signatures and arguments, and executes the mapped Python code.
 
 ---
 
@@ -33,13 +32,12 @@ pip install "kiori[memory]"
 
 ## Quick Start: End-to-End Workflow
 
-Below is a complete example demonstrating how to initialize an Agent, set up its Memory and Router, add Actions, and execute a user prompt.
+Below is a complete example demonstrating how to initialize an Agent, set up its Memory, add Actions, and execute a user prompt.
 
 ```python
 from kiori.agent import KioriAgent
 from kiori.models import Action, ActionExample
 from kiori.memory import MilvusLTM, ReplayBuffer
-from kiori.router import MarkovRouter
 
 # 1. Setup Memory Modules
 ltm = MilvusLTM()  # Automatically initializes a local Milvus Lite vector DB
@@ -52,25 +50,13 @@ example = ActionExample(
 )
 ltm.add_examples([example])
 
-# 3. Setup Markov Router (Define state transition probabilities)
-transition_matrix = {
-    "get_status": {"restart_server": 0.8, "do_nothing": 0.2}
-}
-router = MarkovRouter(
-    transition_matrix=transition_matrix,
-    all_actions=["get_status", "restart_server", "do_nothing"]
-)
-
-# 4. Initialize the Kiori Agent
+# 3. Initialize the Kiori Agent
 agent = KioriAgent(
     ltm=ltm, 
-    replay_buffer=replay_buffer, 
-    router=router, 
-    alpha=0.6, # Weight for Vector Similarity
-    beta=0.4   # Weight for Markov Probability
+    replay_buffer=replay_buffer
 )
 
-# 5. Define and Register Actions (Python Callables)
+# 4. Define and Register Actions (Python Callables)
 def get_status() -> str:
     return "Server is running smoothly."
 
@@ -80,7 +66,7 @@ def restart_server() -> str:
 agent.add_action(Action("get_status", "Fetches current server status", get_status))
 agent.add_action(Action("restart_server", "Restarts the server", restart_server))
 
-# 6. Provide an LLM Callback
+# 5. Provide an LLM Callback
 # This function connects Kiori to your LLM of choice (OpenAI, Anthropic, Gemini, etc.)
 def my_llm_callback(prompt: str) -> str:
     # Example: Send the prompt to an LLM API.
@@ -89,8 +75,8 @@ def my_llm_callback(prompt: str) -> str:
     # Simulating LLM response based on the prompt for demonstration:
     return '[ACTION: get_status, ARGS: {}]'
 
-# 7. Execute the Pipeline
-# The Agent retrieves LTM, samples STM, applies Markov weights, shuffles context, 
+# 6. Execute the Pipeline
+# The Agent retrieves LTM, samples STM, shuffles context, 
 # prompts the LLM, parses the response, executes the action, and updates the buffer!
 result = agent.run("Is the server okay?", llm_callback=my_llm_callback)
 

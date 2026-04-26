@@ -75,7 +75,6 @@ def test_run_pipeline() -> None:
     result = agent.run("Please multiply 10 by 2", dummy_llm)
 
     assert result == 20
-    assert agent.previous_action == "test_action"
 
 
 def test_get_context_examples() -> None:
