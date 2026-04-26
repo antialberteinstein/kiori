@@ -1,7 +1,16 @@
 import os
+import sys
+# Ensure we load the local 'kiori' package, not the one installed via pip
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+os.environ["USE_TF"] = "0"
+
 import datetime
-from transformers import pipeline
 import torch
+import numpy as np
 
 from kiori.agent import KioriAgent
 from kiori.models import Action, ActionExample
@@ -12,12 +21,20 @@ print("Loading LLM (unsloth/gemma-3-270m-it)... This might take a while.")
 # Gemma models work well with bfloat16.
 dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float32
 
+if torch.cuda.is_available():
+    device = "cuda"
+elif torch.backends.mps.is_available():
+    device = "mps"
+else:
+    device = "cpu"
+
 # We use the text-generation pipeline.
+from transformers import pipeline
 generator = pipeline(
     "text-generation",
     model="unsloth/gemma-3-270m-it",
     torch_dtype=dtype,
-    device_map="auto"
+    device=device
 )
 
 def llm_callback(prompt: str) -> str:
@@ -74,12 +91,19 @@ def list_files() -> str:
         return f"Error reading directory: {str(e)}"
 
 
+
 # --- Setup Kiori Agent ---
 
 def main():
     print("\nInitializing Kiori Agent...")
+    
+    # Create logs directory if it doesn't exist
+    log_dir = os.path.join(os.path.dirname(__file__), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    
     # Initialize Memory modules
-    ltm = MilvusLTM(db_path="./kiori_gemma_example.db", collection_name="gemma_examples")
+    db_path = os.path.join(log_dir, "kiori_gemma_example.db")
+    ltm = MilvusLTM(db_path=db_path, collection_name="gemma_examples")
     replay_buffer = ReplayBuffer()
 
     agent = KioriAgent(ltm=ltm, replay_buffer=replay_buffer)
