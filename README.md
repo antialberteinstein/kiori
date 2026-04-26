@@ -6,17 +6,21 @@
 
 **Kiori** is a minimalist, highly extensible Python framework for building SLM/LLM-based agents. True to its philosophy, it eschews bloated dependencies in favor of a clean, composable architecture. 
 
-In version 1.1.0, Kiori embraces the inherent reasoning power of modern Small Language Models (SLMs) and LLMs by relying entirely on **Long-Term Memory (LTM)** via Cosine Similarity and **Short-Term Memory (STM)** via a Replay Buffer. This dynamic memory injection provides agents with robust contextual awareness without artificial routing constraints.
+In version 1.2.0, Kiori embraces **Zero-Configuration** and **Auto-Healing**. It relies on the reasoning power of modern Small Language Models (SLMs) and provides built-in mechanisms to automatically correct model syntax errors.
 
 ---
 
 ## Architecture Overview
 
-Kiori seamlessly merges different memory paradigms before sending prompts to your model:
+Kiori seamlessly merges different paradigms before sending prompts to your model:
 
-1. **Long-Term Memory (LTM) & Weighted Pattern Matcher**: Powered by Milvus Lite, the LTM stores past interactions and few-shot examples as vector embeddings. When a new prompt arrives, Kiori performs semantic search (Cosine Similarity). High-confidence matches are dynamically duplicated (scaled) to heavily influence the model's behavior via the Weighted Pattern Matcher mechanism.
-2. **Short-Term Memory (Replay Buffer)**: Retains the immediate preceding turns of a conversation, ensuring the model is acutely aware of recent context and can reason about the ongoing dialogue state natively.
-3. **Execution Pipeline**: Automatically parses the model's string output, extracts action signatures and arguments, and executes the mapped Python code.
+1. **Long-Term Memory (LTM) & Weighted Pattern Matcher**: Powered by Milvus Lite, the LTM stores past interactions and few-shot examples as vector embeddings. When a new prompt arrives, Kiori performs semantic search (Cosine Similarity). High-confidence matches are dynamically duplicated (scaled) to heavily influence the model's behavior.
+2. **Short-Term Memory (Replay Buffer)**: Retains the immediate preceding turns of a conversation, ensuring the model is acutely aware of recent context. *Note: Kiori intelligently filters out broken interactions, ensuring your SLM only learns from perfect syntax.*
+3. **Smart Parser (`KioriParser`)**: Evaluates the LLM's output and categorizes it into three distinct states:
+   - `SUCCESS`: The LLM output perfectly matches the expected `[ACTION: name, ARGS: {...}]` format.
+   - `NATURAL_CHAT`: The LLM is just conversing naturally with the user.
+   - `BROKEN_FORMAT`: The LLM attempted an action but broke the JSON or bracket syntax.
+4. **Auto-Healing Loop**: If the LLM generates a `BROKEN_FORMAT`, Kiori automatically increments a retry counter, appends a system observation (`[System Observation: Text của bạn bị sai định dạng...]`), and prompts the LLM to correct its own mistake instantly.
 
 ---
 
@@ -50,37 +54,26 @@ example = ActionExample(
 )
 ltm.add_examples([example])
 
-# 3. Initialize the Kiori Agent
-agent = KioriAgent(
-    ltm=ltm, 
-    replay_buffer=replay_buffer
-)
+# 3. Initialize the Kiori Agent (Zero-Configuration!)
+agent = KioriAgent(ltm=ltm, replay_buffer=replay_buffer)
 
 # 4. Define and Register Actions (Python Callables)
 def get_status() -> str:
     return "Server is running smoothly."
 
-def restart_server() -> str:
-    return "Restarting server..."
-
 agent.add_action(Action("get_status", "Fetches current server status", get_status))
-agent.add_action(Action("restart_server", "Restarts the server", restart_server))
 
 # 5. Provide an LLM Callback
-# This function connects Kiori to your LLM of choice (OpenAI, Anthropic, Gemini, etc.)
 def my_llm_callback(prompt: str) -> str:
-    # Example: Send the prompt to an LLM API.
-    # The prompt natively instructs the LLM to output [ACTION: name, ARGS: {...}]
-    
-    # Simulating LLM response based on the prompt for demonstration:
-    return '[ACTION: get_status, ARGS: {}]'
+    # Simulating a broken LLM response for demonstration:
+    return 'I will run the command: [ACTION: get_status ARGS: {}' # Missing comma and closing bracket!
 
 # 6. Execute the Pipeline
-# The Agent retrieves LTM, samples STM, shuffles context, 
-# prompts the LLM, parses the response, executes the action, and updates the buffer!
-result = agent.run("Is the server okay?", llm_callback=my_llm_callback)
+# Kiori will automatically detect the BROKEN_FORMAT, append a correction prompt, 
+# and recall `my_llm_callback` until the LLM outputs a valid SUCCESS format or hits max_retries!
+result = agent.run("Is the server okay?", llm_callback=my_llm_callback, max_retries=3)
 
-print(result) # Output: "Server is running smoothly."
+print(result)
 ```
 
 ## Philosophy

@@ -67,14 +67,35 @@ def test_run_pipeline() -> None:
 
     agent.add_action(Action("test_action", "Multiply by 2", my_action))
 
-    # Dummy LLM callback
+    # Dummy LLM callback for immediate success
     def dummy_llm(prompt: str) -> str:
         return '[ACTION: test_action, ARGS: {"x": 10}]'
 
     # Run pipeline
     result = agent.run("Please multiply 10 by 2", dummy_llm)
-
     assert result == 20
+
+    # Test Auto-Healing loop
+    call_count = [0]
+
+    def broken_then_fixed_llm(prompt: str) -> str:
+        call_count[0] += 1
+        if call_count[0] == 1:
+            # Returns broken format with keyword 'ACTION:'
+            return 'I will do [ACTION: test_action ARGS: x=15]'
+        # Returns fixed format on retry
+        return '[ACTION: test_action, ARGS: {"x": 15}]'
+
+    result2 = agent.run("Multiply 15 by 2", broken_then_fixed_llm)
+    assert result2 == 30
+    assert call_count[0] == 2
+
+    # Test Natural Chat
+    def chat_llm(prompt: str) -> str:
+        return 'Hello there!'
+
+    result3 = agent.run("Hi", chat_llm)
+    assert result3 == 'Hello there!'
 
 
 def test_get_context_examples() -> None:

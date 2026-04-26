@@ -3,7 +3,8 @@ import random
 from typing import List, Optional, Callable, Any
 from .models import Action, ActionExample
 from .memory import MilvusLTM, ReplayBuffer
-from .executor import parse_llm_output, execute_action
+from .executor import execute_action
+from .parser import KioriParser, ParseStatus
 
 
 def context_shuffler(examples: List[ActionExample]) -> List[ActionExample]:
@@ -66,24 +67,55 @@ class KioriAgent:
 
         return merged
 
-    def run(self, user_prompt: str, llm_callback: Callable[[str], str]) -> Any:
+    def run(
+        self,
+        user_prompt: str,
+        llm_callback: Callable[[str], str],
+        max_retries: int = 3
+    ) -> Any:
         ctx = self.get_context_examples(user_prompt)
         shuffled_ctx = context_shuffler(ctx)
-        prompt = format_prompt(user_prompt, shuffled_ctx)
+        base_prompt = format_prompt(user_prompt, shuffled_ctx)
 
-        llm_response = llm_callback(prompt)
+        parser = KioriParser()
+        current_prompt = base_prompt
+        retries = 0
 
-        action_name, kwargs = parse_llm_output(llm_response)
-        result = execute_action(action_name, kwargs, self.actions)
+        while retries < max_retries:
+            llm_response = llm_callback(current_prompt)
+            parse_result = parser.parse(llm_response)
 
-        if action_name:
-            if self.replay_buffer:
-                args_str = json.dumps(kwargs) if kwargs else "{}"
-                action_text = f"[ACTION: {action_name}, ARGS: {args_str}]"
-                new_example = ActionExample(
-                    user_prompt=user_prompt,
-                    expected_action_text=action_text
+            if parse_result.status == ParseStatus.SUCCESS:
+                result = execute_action(parse_result.action_name, parse_result.kwargs, self.actions)
+
+                if self.replay_buffer:
+                    args_str = json.dumps(parse_result.kwargs) if parse_result.kwargs else "{}"
+                    action_text = f"[ACTION: {parse_result.action_name}, ARGS: {args_str}]"
+                    new_example = ActionExample(
+                        user_prompt=user_prompt,
+                        expected_action_text=action_text
+                    )
+                    self.replay_buffer.update_buffer([new_example])
+
+                return result
+
+            elif parse_result.status == ParseStatus.NATURAL_CHAT:
+                if self.replay_buffer:
+                    new_example = ActionExample(
+                        user_prompt=user_prompt,
+                        expected_action_text=parse_result.raw_text
+                    )
+                    self.replay_buffer.update_buffer([new_example])
+                return parse_result.raw_text
+
+            elif parse_result.status == ParseStatus.BROKEN_FORMAT:
+                retries += 1
+                observation = (
+                    "\n[System Observation: Text của bạn bị sai định dạng. "
+                    "Hãy sinh lại chỉ dùng định dạng [ACTION: name, ARGS: {...}]]"
                 )
-                self.replay_buffer.update_buffer([new_example])
+                current_prompt = current_prompt + "\n" + llm_response + observation
 
-        return result
+        raise ValueError(
+            f"Agent failed to produce a valid action format after {max_retries} retries."
+        )
