@@ -95,6 +95,30 @@ ctx = agent.get_context_examples("User's new prompt")
 print(ctx)
 ```
 
+## Routing & Probabilities (MarkovRouter)
+Kiori allows combining semantic search (Cosine Similarity) with Markov Chain probabilities to resolve ambiguous prompts based on the conversation history.
+
+```python
+from kiori.router import MarkovRouter
+from kiori.agent import KioriAgent
+
+# Define transition matrix P(Action_B | Action_A)
+transition_matrix = {
+    "action_A": {"action_B": 0.9, "action_C": 0.1}
+}
+
+router = MarkovRouter(
+    transition_matrix=transition_matrix,
+    all_actions=["action_A", "action_B", "action_C"]
+)
+
+# Initialize agent with alpha (cosine weight) and beta (Markov weight)
+agent = KioriAgent(ltm=ltm, router=router, alpha=0.5, beta=0.5)
+
+# If the previous action was "action_A", the agent will scale up "action_B" 
+# even if a new user prompt semantically looks slightly more like "action_C".
+```
+
 ## Philosophy
 Kiori is built to be lightweight, easy to understand, and independent of bloated external packages.
 
