@@ -1,4 +1,3 @@
-from typing import Any
 from unittest.mock import MagicMock
 from kiori.agent import KioriAgent
 from kiori.models import Action, ActionExample
@@ -38,12 +37,45 @@ def test_add_example() -> None:
     assert agent.examples[0].user_prompt == "Do the test"
 
 
-def test_run(capsys: Any) -> None:
+def test_context_shuffler() -> None:
+    from kiori.agent import context_shuffler
+    ex1 = ActionExample("p1", "a1")
+    ex2 = ActionExample("p2", "a2")
+    ex3 = ActionExample("p3", "a3")
+
+    shuffled = context_shuffler([ex1, ex2, ex3])
+    assert len(shuffled) == 3
+    for ex in [ex1, ex2, ex3]:
+        assert ex in shuffled
+
+
+def test_format_prompt() -> None:
+    from kiori.agent import format_prompt
+    ex = ActionExample("p1", "a1")
+    prompt = format_prompt("test", [ex])
+    assert "User: p1" in prompt
+    assert "Action: a1" in prompt
+    assert "User: test\nAction:" in prompt
+
+
+def test_run_pipeline() -> None:
     agent = KioriAgent()
-    agent.run("Hello world")
-    captured = capsys.readouterr()
-    assert "Prompt received: Hello world\n" in captured.out
-    assert "Context examples count: 0\n" in captured.out
+
+    # Define an action
+    def my_action(x: int) -> int:
+        return x * 2
+
+    agent.add_action(Action("test_action", "Multiply by 2", my_action))
+
+    # Dummy LLM callback
+    def dummy_llm(prompt: str) -> str:
+        return '[ACTION: test_action, ARGS: {"x": 10}]'
+
+    # Run pipeline
+    result = agent.run("Please multiply 10 by 2", dummy_llm)
+
+    assert result == 20
+    assert agent.previous_action == "test_action"
 
 
 def test_get_context_examples() -> None:

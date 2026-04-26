@@ -1,7 +1,31 @@
-from typing import List, Optional
+import json
+import random
+from typing import List, Optional, Callable, Any
 from .models import Action, ActionExample
 from .memory import MilvusLTM, ReplayBuffer
 from .router import MarkovRouter
+from .executor import parse_llm_output, execute_action
+
+
+def context_shuffler(examples: List[ActionExample]) -> List[ActionExample]:
+    shuffled = list(examples)
+    random.shuffle(shuffled)
+    return shuffled
+
+
+def format_prompt(user_query: str, examples: List[ActionExample]) -> str:
+    prompt = "System: You are an intelligent agent. " \
+             "Based on the examples, output the correct action " \
+             "in format [ACTION: name, ARGS: {...}]\n"
+    if examples:
+        prompt += "Examples:\n"
+        for ex in examples:
+            prompt += (
+                f"User: {ex.user_prompt}\n"
+                f"Action: {ex.expected_action_text}\n\n"
+            )
+    prompt += f"User: {user_query}\nAction:"
+    return prompt
 
 
 class KioriAgent:
@@ -67,12 +91,25 @@ class KioriAgent:
 
         return merged
 
-    def run(self, user_prompt: str) -> None:
+    def run(self, user_prompt: str, llm_callback: Callable[[str], str]) -> Any:
         ctx = self.get_context_examples(user_prompt)
-        print(f"Prompt received: {user_prompt}")
-        print(f"Context examples count: {len(ctx)}")
+        shuffled_ctx = context_shuffler(ctx)
+        prompt = format_prompt(user_prompt, shuffled_ctx)
 
-        if ctx:
-            # Simulate execution for next turn routing
-            action_text = ctx[0].expected_action_text
-            self.previous_action = action_text.split("(")[0].strip()
+        llm_response = llm_callback(prompt)
+
+        action_name, kwargs = parse_llm_output(llm_response)
+        result = execute_action(action_name, kwargs, self.actions)
+
+        if action_name:
+            self.previous_action = action_name
+            if self.replay_buffer:
+                args_str = json.dumps(kwargs) if kwargs else "{}"
+                action_text = f"[ACTION: {action_name}, ARGS: {args_str}]"
+                new_example = ActionExample(
+                    user_prompt=user_prompt,
+                    expected_action_text=action_text
+                )
+                self.replay_buffer.update_buffer([new_example])
+
+        return result

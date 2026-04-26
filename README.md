@@ -95,6 +95,33 @@ ctx = agent.get_context_examples("User's new prompt")
 print(ctx)
 ```
 
+## Execution Pipeline
+
+Kiori provides a fully built-in execution pipeline that formats context, calls your LLM, parses the response, and executes the chosen Python function.
+
+```python
+from kiori.agent import KioriAgent
+from kiori.models import Action
+
+agent = KioriAgent()
+
+def weather_action(location: str) -> str:
+    return f"Weather in {location} is sunny."
+
+agent.add_action(Action("get_weather", "Get weather for a location", weather_action))
+
+# User provides their own LLM callback function
+def my_llm_callback(prompt: str) -> str:
+    # Call OpenAI, Claude, Gemini, etc.
+    # The prompt instructs the LLM to output: [ACTION: name, ARGS: {...}]
+    return '[ACTION: get_weather, ARGS: {"location": "Tokyo"}]'
+
+# The agent automatically retrieves context, formats prompt, calls LLM, 
+# executes the action, and saves the turn to Short-Term Memory!
+result = agent.run("What's the weather in Tokyo?", llm_callback=my_llm_callback)
+print(result) # "Weather in Tokyo is sunny."
+```
+
 ## Routing & Probabilities (MarkovRouter)
 Kiori allows combining semantic search (Cosine Similarity) with Markov Chain probabilities to resolve ambiguous prompts based on the conversation history.
 
