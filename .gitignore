@@ -33,3 +33,9 @@ MANIFEST
 
 # Pytest
 .pytest_cache/
+
+# Databases and Logs
+logs/
+examples/logs/
+*.db
+*.log

@@ -13,10 +13,16 @@ def context_shuffler(examples: List[ActionExample]) -> List[ActionExample]:
     return shuffled
 
 
-def format_prompt(user_query: str, examples: List[ActionExample]) -> str:
+def format_prompt(user_query: str, examples: List[ActionExample], actions: Optional[List[Action]] = None) -> str:
     prompt = "System: You are an intelligent agent. " \
              "Based on the examples, output the correct action " \
              "in format [ACTION: name, ARGS: {...}]\n"
+    if actions:
+        prompt += "Available Actions:\n"
+        for act in actions:
+            prompt += f"- {act.name}: {act.description}\n"
+        prompt += "\n"
+
     if examples:
         prompt += "Examples:\n"
         for ex in examples:
@@ -75,7 +81,7 @@ class KioriAgent:
     ) -> Any:
         ctx = self.get_context_examples(user_prompt)
         shuffled_ctx = context_shuffler(ctx)
-        base_prompt = format_prompt(user_prompt, shuffled_ctx)
+        base_prompt = format_prompt(user_prompt, shuffled_ctx, self.actions)
 
         parser = KioriParser()
         current_prompt = base_prompt
@@ -86,6 +92,18 @@ class KioriAgent:
             parse_result = parser.parse(llm_response)
 
             if parse_result.status == ParseStatus.SUCCESS:
+                # Check if action exists
+                action_exists = any(a.name == parse_result.action_name for a in self.actions)
+                if not action_exists:
+                    retries += 1
+                    valid_names = ", ".join(a.name for a in self.actions)
+                    observation = (
+                        f"\n[System Observation: Action '{parse_result.action_name}' không tồn tại. "
+                        f"Các hành động hợp lệ là: {valid_names}. Hãy chọn hành động đúng.]"
+                    )
+                    current_prompt += f"\n{llm_response}{observation}\n"
+                    continue
+
                 result = execute_action(parse_result.action_name, parse_result.kwargs, self.actions)
 
                 if self.replay_buffer:

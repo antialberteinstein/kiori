@@ -1,7 +1,6 @@
 import random
 from typing import List, Tuple
-from pymilvus import MilvusClient
-from sentence_transformers import SentenceTransformer
+
 from .models import ActionExample
 
 
@@ -12,6 +11,12 @@ class MilvusLTM:
         collection_name: str = "kiori_examples",
         model_name: str = "all-MiniLM-L6-v2"
     ) -> None:
+        try:
+            from pymilvus import MilvusClient
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise ImportError("MilvusLTM requires 'pymilvus' and 'sentence-transformers'. Install with: pip install \"kiori[memory]\"")
+            
         self.client = MilvusClient(db_path)
         self.collection_name = collection_name
         self.model = SentenceTransformer(model_name)
