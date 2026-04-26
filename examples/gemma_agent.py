@@ -113,17 +113,16 @@ def main():
     agent.add_action(Action("calculate_expression", "Evaluate math expressions", calculate_expression))
     agent.add_action(Action("list_files", "List files in the directory", list_files))
 
-    # Add Few-Shot Examples to Long-Term Memory
-    # This teaches the LLM how to map user intents to the exact syntax we need
+    # Add Few-Shot Examples to Long-Term Memory (Structured data, no parser leak)
     examples = [
-        ActionExample("What time is it right now?", '[ACTION: get_current_time, ARGS: {}]'),
-        ActionExample("Tell me the current date and time", '[ACTION: get_current_time, ARGS: {}]'),
+        ActionExample("What time is it right now?", action_name="get_current_time", kwargs={}),
+        ActionExample("Tell me the current date and time", action_name="get_current_time", kwargs={}),
         
-        ActionExample("Calculate 15 * 4", '[ACTION: calculate_expression, ARGS: {"expression": "15 * 4"}]'),
-        ActionExample("What is 100 / 25 + 5?", '[ACTION: calculate_expression, ARGS: {"expression": "100 / 25 + 5"}]'),
+        ActionExample("Calculate 15 * 4", action_name="calculate_expression", kwargs={"expression": "15 * 4"}),
+        ActionExample("What is 100 / 25 + 5?", action_name="calculate_expression", kwargs={"expression": "100 / 25 + 5"}),
         
-        ActionExample("What files are in this folder?", '[ACTION: list_files, ARGS: {}]'),
-        ActionExample("Show me the directory contents", '[ACTION: list_files, ARGS: {}]'),
+        ActionExample("What files are in this folder?", action_name="list_files", kwargs={}),
+        ActionExample("Show me the directory contents", action_name="list_files", kwargs={}),
     ]
     ltm.add_examples(examples)
 
