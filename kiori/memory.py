@@ -33,22 +33,56 @@ class MilvusLTM:
                 auto_id=True
             )
 
-    def add_examples(self, examples: List[ActionExample]) -> None:
+    def add_examples(self, examples: List[ActionExample], similarity_threshold: float = 0.95) -> None:
+        """Thêm danh sách ví dụ vào bộ nhớ dài hạn, bỏ qua các ví dụ quá giống nhau."""
         if not examples:
             return
+            
+        # Đảm bảo collection tồn tại trước khi insert
+        if not self.client.has_collection(self.collection_name):
+            self.client.create_collection(
+                collection_name=self.collection_name,
+                dimension=self.dim,
+                metric_type="COSINE",
+                id_type="int",
+                auto_id=True
+            )
 
-        prompts = [ex.user_prompt for ex in examples]
+        to_insert = []
+        for ex in examples:
+            # Kiểm tra xem ví dụ này đã tồn tại chưa (Similarity check)
+            existing = self.search(ex.user_prompt, top_k=1)
+            if existing:
+                _, score = existing[0]
+                if score >= similarity_threshold:
+                    # Ví dụ này đã tồn tại hoặc rất giống, bỏ qua
+                    continue
+            
+            to_insert.append(ex)
+
+        if not to_insert:
+            return
+
+        prompts = [ex.user_prompt for ex in to_insert]
         embeddings = self.model.encode(prompts, convert_to_numpy=True).tolist()
-
-        data = []
-        for ex, emb in zip(examples, embeddings):
-            data.append({
-                "vector": emb,
+        
+        data = [
+            {
                 "user_prompt": ex.user_prompt,
-                "expected_action_text": ex.expected_action_text
-            })
+                "expected_action_text": ex.expected_action_text,
+                "vector": embeddings[i]
+            }
+            for i, ex in enumerate(to_insert)
+        ]
 
         self.client.insert(collection_name=self.collection_name, data=data)
+
+    def clear(self) -> None:
+        """Xóa toàn bộ dữ liệu trong collection hiện tại."""
+        # Cách nhanh nhất là drop và tạo lại hoặc xóa bằng filter
+        if self.client.has_collection(self.collection_name):
+            self.client.drop_collection(self.collection_name)
+        # Tự động khởi tạo lại khi insert
 
     def search(
         self, query: str, top_k: int = 5
@@ -79,18 +113,25 @@ class MilvusLTM:
         threshold: float,
         max_copies: int
     ) -> List[ActionExample]:
+        """Lọc và nhân bản ví dụ dựa trên điểm số. Đảm bảo mỗi ví dụ hợp lệ xuất hiện ít nhất 1 lần."""
         scaled_examples = []
         for ex, score in examples_with_scores:
-            if score > threshold:
-                # Duplicate example proportional to its score
-                # Ensuring it generates between 1 and max_copies
-                ratio = min(1.0, max(0.0, score))
-                copies = max(1, int(ratio * max_copies))
-                scaled_examples.extend([ex] * copies)
+            if score >= threshold:
+                # Nếu max_copies = 1, chúng ta chỉ lấy duy nhất 1 bản sao
+                if max_copies <= 1:
+                    scaled_examples.append(ex)
+                else:
+                    # Nhân bản dựa trên độ tương đồng (score)
+                    ratio = min(1.0, max(0.0, score))
+                    copies = max(1, int(ratio * max_copies))
+                    scaled_examples.extend([ex] * copies)
         return scaled_examples
 
 
 class ReplayBuffer:
+
+    NO_REPLAY_BUFFER = None
+
     def __init__(self) -> None:
         self.buffer: List[ActionExample] = []
 

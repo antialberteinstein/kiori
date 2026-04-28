@@ -16,7 +16,7 @@ from kiori.agent import KioriAgent
 from kiori.models import Action, ActionExample
 from kiori.memory import MilvusLTM, ReplayBuffer
 
-print("Loading LLM (unsloth/gemma-3-270m-it)... This might take a while.")
+print("Loading LLM (unsloth/gemma-3-1b-it)... This might take a while.")
 # Initialize the pipeline. We use bfloat16 if available, otherwise float32.
 # Gemma models work well with bfloat16.
 dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float32
@@ -32,29 +32,21 @@ else:
 from transformers import pipeline
 generator = pipeline(
     "text-generation",
-    model="unsloth/gemma-3-270m-it",
+    model="unsloth/gemma-3-1b-it",
     torch_dtype=dtype,
     device=device
 )
 
 def llm_callback(prompt: str) -> str:
     """
-    Callback: nhận prompt đã được Kiori format đầy đủ (bao gồm chat template),
-    tokenize và gửi cho model sinh kết quả.
+    Callback: nhận prompt thuần từ Kiori (không có chat template),
+    wrap vào messages và dùng transformers pipeline để áp chat template tự động.
+    Thêm 'Action:' vào cuối để hướng model sinh action thay vì tiếp tục pattern.
     """
-    tokenizer = generator.tokenizer
-    model = generator.model
+    messages = [{"role": "user", "content": prompt}]
     
-    inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=False).to(model.device)
-    input_len = inputs["input_ids"].shape[1]
-    
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=128,
-        pad_token_id=tokenizer.eos_token_id
-    )
-    
-    generated_text = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True).strip()
+    outputs = generator(messages, max_new_tokens=128, temperature=0.2)
+    generated_text = outputs[0]['generated_text'][-1]['content'].strip()
     
     print(f"\n[LLM Raw Output] -> {generated_text}\n")
     
@@ -85,7 +77,7 @@ def list_files() -> str:
     try:
         files = os.listdir(".")
         # Filter out hidden files just to keep the output clean
-        visible_files = [f for f in files if not f.startswith('.')]
+        visible_files = [f'`{file}`' for file in files if not file.startswith('.')]
         if not visible_files:
             return "The current directory is empty."
         return "Files in current directory: " + ", ".join(visible_files)
@@ -108,7 +100,7 @@ def main():
     ltm = MilvusLTM(db_path=db_path, collection_name="gemma_examples")
     replay_buffer = ReplayBuffer()
 
-    agent = KioriAgent(ltm=ltm, replay_buffer=replay_buffer, max_copies=5, chat_format="gemma")
+    agent = KioriAgent(ltm=ltm, replay_buffer=replay_buffer, max_copies=3)
 
     # Register Actions
     agent.add_action(Action("get_current_time", "Fetch the current time", get_current_time))
@@ -135,7 +127,7 @@ def main():
     # Test Queries
     queries = [
         "Hey, can you check what time it is?",
-        "I need to know the result of 92 * 13 + 432 / 25",
+        "I need to know the result of 25 * 18",
         "Please list all the files located in the current directory."
     ]
 

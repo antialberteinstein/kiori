@@ -15,16 +15,13 @@ os.environ["USE_TF"] = "0"
 import torch
 from transformers import pipeline
 
-# Import chuẩn từ kiori v1.2.0
+# Import chuẩn từ kiori
 from kiori.agent import KioriAgent
 from kiori.models import Action, ActionExample
-from kiori.parser import KioriParser, ParseStatus
-from kiori.executor import execute_action
 from kiori.memory import MilvusLTM, ReplayBuffer
 
-# Khởi tạo mô hình
-print("Đang tải mô hình unsloth/gemma-3-270m-it...")
-# Ưu tiên mps nếu có để chạy nhanh hơn, nếu không dùng cpu như yêu cầu
+# Khởi tạo mô hình (1B - không cần prefix-fill, dùng transformers chat template)
+print("Đang tải mô hình unsloth/gemma-3-1b-it...")
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 print(f"Sử dụng thiết bị: {device}")
 
@@ -32,7 +29,7 @@ dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_suppo
 
 generator = pipeline(
     "text-generation",
-    model="unsloth/gemma-3-270m-it",
+    model="unsloth/gemma-3-1b-it",
     device=device,
     torch_dtype=dtype
 )
@@ -70,14 +67,15 @@ class RobotSim:
 # Khởi tạo Memory modules
 log_dir = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(log_dir, exist_ok=True)
-db_path = os.path.join(log_dir, "pygame_robot.db")
+db_path = os.path.join(log_dir, "pygame_robot_wo.db")
 
 ltm = MilvusLTM(db_path=db_path, collection_name="robot_actions")
 replay_buffer = ReplayBuffer.NO_REPLAY_BUFFER
 
 # Khởi tạo đối tượng
 robot = RobotSim(grid_size=10, max_x=9, max_y=9)
-agent = KioriAgent(ltm=ltm, replay_buffer=replay_buffer, threshold=0.65, max_copies=3, chat_format="gemma")
+# chat_format=None → Kiori trả prompt thuần, callback dùng transformers pipeline tự áp template
+agent = KioriAgent(ltm=ltm, replay_buffer=replay_buffer, threshold=0.65, max_copies=3)
 
 # Đăng ký các hàm vào agent
 agent.add_action(Action("move_up", "Move up", robot.move_up))
@@ -86,7 +84,6 @@ agent.add_action(Action("move_left", "Move left", robot.move_left))
 agent.add_action(Action("move_right", "Move right", robot.move_right))
 
 # Thêm Few-Shot Examples vào Long-Term Memory (LTM)
-# Kiori sẽ tự động chọn ví dụ phù hợp nhất dựa trên Cosine Similarity
 examples = [
     ActionExample("move up", action_name="move_up", kwargs={"steps": 1}),
     ActionExample("move up 3 steps", action_name="move_up", kwargs={"steps": 3}),
@@ -104,7 +101,6 @@ examples = [
     ActionExample("move right 5", action_name="move_right", kwargs={"steps": 5}),
     ActionExample("turn right 2 steps", action_name="move_right", kwargs={"steps": 2}),
 ]
-# Làm sạch tri thức cũ và nạp mới để tránh trùng lặp
 ltm.clear()
 ltm.add_examples(examples)
 
@@ -117,25 +113,20 @@ def process_command_thread(user_text):
     global log_message, is_thinking
     
     def llm_callback(prompt: str) -> str:
-        tokenizer = generator.tokenizer
-        model = generator.model
+        """
+        Callback: nhận prompt thuần từ Kiori (không có chat template),
+        wrap vào messages và dùng transformers pipeline để áp chat template tự động.
+        Thêm 'Action:' vào cuối để hướng model sinh action thay vì tiếp tục pattern.
+        """
+        messages = [{"role": "user", "content": prompt}]
         
-        inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=False).to(model.device)
-        input_len = inputs["input_ids"].shape[1]
-        
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=128,
-            pad_token_id=tokenizer.eos_token_id
-        )
-        
-        llm_text = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True).strip()
+        outputs = generator(messages, max_new_tokens=128, temperature=0.2)
+        llm_text = outputs[0]['generated_text'][-1]['content'].strip()
             
         print(f"\n[LLM Raw Output]: {llm_text}")
         return llm_text
 
     try:
-        # Kéo nguyên sức mạnh Auto-Healing & Pipeline của KioriAgent vào
         result = agent.run(user_text, llm_callback=llm_callback, max_retries=3)
         log_message = f"SUCCESS: {result}"
     except Exception as e:
@@ -151,7 +142,7 @@ def main():
     # Cấu hình cửa sổ
     WIDTH, HEIGHT = 600, 700
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Kiori Robot Simulator (Gemma 3 270M)")
+    pygame.display.set_caption("Kiori Robot Simulator (Gemma 3 1B - No Chat Template)")
     
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Arial", 20)

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Any
+from typing import Callable, Any, Optional
 
 
 @dataclass
@@ -20,5 +20,7 @@ class ActionExample:
         # Nếu người dùng truyền action_name và kwargs, tự tạo chuỗi format chuẩn
         if self.action_name and self.expected_action_text is None:
             import json
+            from .parser import ACTION_FORMAT
             args_str = json.dumps(self.kwargs) if self.kwargs else "{}"
-            self.expected_action_text = f"[ACTION: {self.action_name}, ARGS: {args_str}]"
+            self.expected_action_text = ACTION_FORMAT.format(self.action_name, args_str)
+
